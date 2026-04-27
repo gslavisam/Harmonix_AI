@@ -164,6 +164,7 @@ class AppState(rx.State):
     @rx.event
     async def handle_notation_upload(self, files: list[rx.UploadFile]):
         logger.debug(f"[NOTATION_UPLOAD] Početak handle_notation_upload, fajlova primljeno: {len(files) if files else 0}")
+        should_emit_final_state = False
         
         if not files:
             logger.warning("[NOTATION_UPLOAD] Nema fajlova za obradu")
@@ -249,7 +250,13 @@ class AppState(rx.State):
             self.uploaded_notation_status = f"Progresija izvučena preko modela {result.get('model_used', 'offline')}. Pokrećem analizu..."
             
             logger.debug(f"[NOTATION_UPLOAD] Primenjujem progresiju: {extracted_progression}")
-            self._apply_progression_input(extracted_progression, preserve_song_context=True)
+            self._apply_uploaded_progression(extracted_progression)
+            if self.validation_error:
+                logger.warning(f"[NOTATION_UPLOAD] Ekstraktovana progresija nije validna za analizu: {self.validation_error}")
+                self.uploaded_notation_error = f"Izvučena progresija nije validna za analizu: {self.validation_error}"
+                self.uploaded_notation_status = ""
+                yield
+                return
             yield
             
             logger.info("[NOTATION_UPLOAD] Pokrećem analyze_and_generate()")
@@ -268,7 +275,11 @@ class AppState(rx.State):
             self.uploaded_notation_status = ""
         finally:
             self.is_uploading_notation = False
+            should_emit_final_state = True
             logger.debug("[NOTATION_UPLOAD] Završavanje - is_uploading_notation set na False")
+
+        if should_emit_final_state:
+            yield
 
     @rx.event
     async def analyze_song_example(
@@ -425,6 +436,8 @@ class AppState(rx.State):
             self.is_processing = False
             logger.debug("[ANALYZE] Završavanje - is_processing=False")
 
+        yield
+
     def export_midi_file(self) -> None:
         if not self.bass_notes:
             return
@@ -470,6 +483,11 @@ class AppState(rx.State):
         self.can_copy_suno_prompt = False
         self.midi_export_path = ""
         self.suno_prompt_text = ""
+
+    def _apply_uploaded_progression(self, progression: str) -> None:
+        cleaned_progression = progression.strip()
+        self.chord_input = cleaned_progression
+        self._apply_progression_input(cleaned_progression, preserve_song_context=True)
 
     def _apply_progression_input(self, value: str, preserve_song_context: bool = False) -> None:
         self.chord_input = value

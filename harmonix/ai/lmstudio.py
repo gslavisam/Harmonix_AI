@@ -491,12 +491,19 @@ class LMStudioClient:
             sequence = parse_progression(normalized)
             return " ".join(chord.label for chord in sequence.chords)
         except HarmonyParseError:
-            return self._extract_progression_tokens(normalized)
+            recovered = self._extract_progression_tokens(normalized)
+            if not recovered:
+                return ""
+            try:
+                sequence = parse_progression(recovered)
+            except HarmonyParseError:
+                return recovered
+            return " ".join(chord.label for chord in sequence.chords)
 
     def _extract_progression_tokens(self, text: str) -> str:
         tokens: list[str] = []
         for raw_token in text.split():
-            token = raw_token.strip(",.()[]{}<>!?")
+            token = raw_token.strip(",.;:()[]{}<>!?-–—−")
             if not token:
                 continue
             try:

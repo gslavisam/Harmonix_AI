@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 from pathlib import Path
 
 
 SUPPORTED_NOTATION_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".webp"}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+PROGRESSION_TOKEN_EDGE_NOISE = ",.;:!?()[]{}<>\"'`~"
 
 
 def detect_notation_file_kind(filename: str) -> str:
@@ -44,12 +46,20 @@ def render_pdf_pages_to_png(file_bytes: bytes, max_pages: int = 3) -> list[bytes
 
 
 def normalize_progression_text(raw_text: str) -> str:
-    text = raw_text.replace("\n", " ")
+    text = raw_text.replace("\r", " ").replace("\n", " ").replace("\t", " ")
     text = text.replace("|", " ")
-    text = text.replace(":", " ")
-    text = text.replace(";", " ")
+    text = re.sub(r"[;:,]+", " ", text)
+    text = re.sub(r"[–—−]+", "-", text)
+    text = re.sub(r"(?<=[A-Ga-g0-9#/b)])\s*-+\s*(?=[A-Ga-g])", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
-    return text
+
+    normalized_tokens: list[str] = []
+    for raw_token in text.split():
+        token = raw_token.strip(PROGRESSION_TOKEN_EDGE_NOISE + "-")
+        if token:
+            normalized_tokens.append(token)
+
+    return " ".join(normalized_tokens)
 
 
 def default_notation_title(filename: str) -> str:
@@ -57,8 +67,18 @@ def default_notation_title(filename: str) -> str:
     return stem.title() if stem else "Uploaded notation"
 
 
+def resolve_notation_upload_dir() -> Path:
+    configured_dir = os.getenv("UPLOAD_DIR", "").strip()
+    if configured_dir:
+        configured_path = Path(configured_dir).expanduser()
+        if configured_path.is_absolute():
+            return configured_path
+        return Path(tempfile.gettempdir()) / configured_path
+    return Path(tempfile.gettempdir()) / "harmonix_ai_uploads"
+
+
 def store_uploaded_notation(file_bytes: bytes, filename: str) -> str:
-    upload_dir = Path(os.getenv("UPLOAD_DIR", "uploads")) / "notation"
+    upload_dir = resolve_notation_upload_dir() / "notation"
     upload_dir.mkdir(parents=True, exist_ok=True)
     safe_name = Path(filename).name
     output_path = upload_dir / safe_name
