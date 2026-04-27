@@ -19,7 +19,9 @@ from harmonix.services.notation_import import default_notation_title, store_uplo
 
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.getLogger("python_multipart").setLevel(logging.WARNING)
+logging.getLogger("asyncio").setLevel(logging.INFO)
 
 PROGRESSION_PRESETS = build_progression_catalog()
 SONG_EXAMPLES = build_song_example_catalog()
@@ -55,6 +57,7 @@ class AppState(rx.State):
     uploaded_notation_model_used: str = ""
     uploaded_notation_offline_mode: bool = False
     is_uploading_notation: bool = False
+    is_notation_file_uploading: bool = False
     uploaded_notation_path: str = ""
     tempo: int = 120
     validation_error: str = ""
@@ -99,17 +102,16 @@ class AppState(rx.State):
 
     def track_notation_upload_progress(self, progress: dict[str, int | float | bool]) -> None:
         self.assistant_panel_tab = "upload"
-        self.is_uploading_notation = True
-        self.uploaded_notation_error = ""
-        self.uploaded_notation_excerpt = ""
-        self.uploaded_notation_progression_preview = ""
-        self.uploaded_notation_note = ""
-        self.uploaded_notation_model_used = ""
-        self.uploaded_notation_offline_mode = False
         ratio = float(progress.get("progress", 0.0) or 0.0)
         percent = max(0, min(100, int(ratio * 100)))
+        self.is_notation_file_uploading = percent < 100
+
+        if self.uploaded_notation_progression_preview or self.uploaded_notation_model_used:
+            return
+
+        self.uploaded_notation_error = ""
         if percent >= 100:
-            self.uploaded_notation_status = "Upload završen. Backend priprema dokument za LM Studio..."
+            self.uploaded_notation_status = "Fajl je poslat. Pokrećem obradu..."
         elif percent > 0:
             self.uploaded_notation_status = f"Uploadujem dokument... {percent}%"
         else:
@@ -165,10 +167,12 @@ class AppState(rx.State):
     async def handle_notation_upload(self, files: list[rx.UploadFile]):
         logger.debug(f"[NOTATION_UPLOAD] Početak handle_notation_upload, fajlova primljeno: {len(files) if files else 0}")
         should_emit_final_state = False
+        should_clear_upload_selection = False
         
         if not files:
             logger.warning("[NOTATION_UPLOAD] Nema fajlova za obradu")
             self.is_uploading_notation = False
+            self.is_notation_file_uploading = False
             self.uploaded_notation_error = "Izaberi PDF ili sliku pre pokretanja analize."
             self.uploaded_notation_status = ""
             self.uploaded_notation_excerpt = ""
@@ -180,6 +184,7 @@ class AppState(rx.State):
 
         self.assistant_panel_tab = "upload"
         self.is_uploading_notation = True
+        self.is_notation_file_uploading = False
         self.uploaded_notation_error = ""
         self.uploaded_notation_status = "Čitam uploadovani dokument..."
         logger.debug("[NOTATION_UPLOAD] Postavljam UI u 'uploading' stanje")
@@ -269,6 +274,7 @@ class AppState(rx.State):
             logger.info(f"[NOTATION_UPLOAD] analyze_and_generate() završena, {analysis_count} eventa")
             
             self.uploaded_notation_status = "Upload je pročitan i progresija je analizirana."
+            should_clear_upload_selection = True
             logger.info("[NOTATION_UPLOAD] Upload notacije ZAVRŠEN USPEŠNO")
         except Exception as exc:
             logger.exception(f"[NOTATION_UPLOAD] GREŠKA pri obradi: {exc}")
@@ -276,11 +282,14 @@ class AppState(rx.State):
             self.uploaded_notation_status = ""
         finally:
             self.is_uploading_notation = False
+            self.is_notation_file_uploading = False
             should_emit_final_state = True
             logger.debug("[NOTATION_UPLOAD] Završavanje - is_uploading_notation set na False")
 
         if should_emit_final_state:
             yield
+        if should_clear_upload_selection:
+            yield rx.clear_selected_files("notation-upload")
 
     @rx.event
     async def analyze_song_example(

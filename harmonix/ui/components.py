@@ -389,6 +389,7 @@ def song_examples_panel() -> rx.Component:
 def notation_upload_panel() -> rx.Component:
     upload_id = "notation-upload"
     selected_files = rx.selected_files(upload_id)
+    upload_busy = AppState.is_notation_file_uploading | AppState.is_uploading_notation
     return rx.vstack(
         rx.hstack(
             rx.heading("Upload notation", size="4"),
@@ -433,7 +434,7 @@ def notation_upload_panel() -> rx.Component:
                 ),
                 rx.button(
                     rx.cond(
-                        AppState.is_uploading_notation,
+                        upload_busy,
                         rx.hstack(
                             rx.spinner(size="2"),
                             rx.text("Čitam i analiziram notaciju..."),
@@ -454,7 +455,7 @@ def notation_upload_panel() -> rx.Component:
                     ),
                     color_scheme="amber",
                     width="100%",
-                    disabled=(selected_files.length() == 0) | AppState.is_uploading_notation | AppState.is_processing,
+                    disabled=(selected_files.length() == 0) | upload_busy | AppState.is_processing,
                 ),
                 rx.cond(
                     selected_files.length() > 0,
@@ -475,7 +476,7 @@ def notation_upload_panel() -> rx.Component:
                     rx.fragment(),
                 ),
                 rx.cond(
-                    AppState.is_uploading_notation,
+                    upload_busy,
                     processing_panel(
                         "Notation upload je u toku",
                         rx.cond(
