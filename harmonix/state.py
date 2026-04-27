@@ -246,6 +246,7 @@ class AppState(rx.State):
             self.selected_song_title = title
             self.selected_song_artist = "Uploaded notation"
             self.selected_song_pattern = "Notation import"
+            self.current_pattern_key = ""
             self.selected_song_note = note
             self.uploaded_notation_status = f"Progresija izvučena preko modela {result.get('model_used', 'offline')}. Pokrećem analizu..."
             

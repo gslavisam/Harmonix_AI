@@ -425,19 +425,26 @@ def build_theory_profile(
 
     raw_joined = " ".join(cadence_items)
     joined = raw_joined.lower()
+    raw_pattern_label = pattern_label or ""
+    pattern_lower = raw_pattern_label.lower()
     inferred_key = ""
-    if "ii-v-i ka" in raw_joined:
+
+    if any("ii-V-i ka" in item for item in cadence_items) or "ii-v-i" in raw_pattern_label:
         inferred_key = "ii_v_i_minor"
-    elif "ii-V-I" in raw_joined or "ii-v-i" in pattern_label.lower() or "ii-v-i" in joined:
+    elif any("ii-V-I ka" in item for item in cadence_items) or "ii-v-i" in pattern_lower:
         inferred_key = "ii_v_i_major"
-    elif "turnaround" in joined or "turnaround" in pattern_label.lower():
+    elif "turnaround" in joined or "turnaround" in pattern_lower:
         inferred_key = "turnaround_major"
-    elif "backdoor" in joined or "backdoor" in pattern_label.lower():
+    elif "backdoor" in joined or "backdoor" in pattern_lower:
         inferred_key = "backdoor"
-    elif "blues" in pattern_label.lower():
-        inferred_key = "minor_blues" if "minor" in pattern_label.lower() else "jazz_blues"
-    elif "bridge" in pattern_label.lower():
+    elif "blues" in pattern_lower:
+        inferred_key = "minor_blues" if "minor" in pattern_lower else "jazz_blues"
+    elif "bridge" in pattern_lower:
         inferred_key = "rhythm_changes_bridge"
+    elif sequence and _looks_like_minor_ii_v_i(sequence):
+        inferred_key = "ii_v_i_minor"
+    elif sequence and _looks_like_major_ii_v_i(sequence):
+        inferred_key = "ii_v_i_major"
     elif sequence and _has_dominant_chain(sequence):
         inferred_key = "dominant_chain"
     elif sequence and _has_secondary_dominant(sequence):
@@ -475,6 +482,20 @@ def build_theory_profile(
         ],
         "resource_hint": "Za dalje proučavanje fokusiraj teme kao što su ii-V-I voice leading, dominant substitutions, jazz blues reharmonization i walking bass design u savremenim jazz edukativnim izvorima.",
     }
+
+
+def _looks_like_minor_ii_v_i(sequence: ChordSequence) -> bool:
+    if len(sequence.chords) < 3:
+        return False
+    first, second, third = sequence.chords[:3]
+    return first.quality == "half-dim" and second.quality == "dom" and third.quality == "min"
+
+
+def _looks_like_major_ii_v_i(sequence: ChordSequence) -> bool:
+    if len(sequence.chords) < 3:
+        return False
+    first, second, third = sequence.chords[:3]
+    return first.quality == "min" and second.quality == "dom" and third.quality == "maj"
 
 
 def build_bass_theory_sections(
