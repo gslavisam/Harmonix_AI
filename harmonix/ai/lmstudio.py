@@ -27,6 +27,21 @@ class LMStudioClient:
         self.model = os.getenv("LMSTUDIO_MODEL", "").strip()
         self.timeout_seconds = float(os.getenv("LMSTUDIO_TIMEOUT_SECONDS", "30"))
 
+    def _sanitize_messages(self, messages: list[dict]) -> list[dict]:
+        sanitized: list[dict] = []
+        for m in messages:
+            content = m.get("content")
+            if isinstance(content, str):
+                safe = content
+            else:
+                try:
+                    safe = json.dumps(content, ensure_ascii=False)
+                except Exception:
+                    # Fallback to string conversion if JSON serialization fails
+                    safe = str(content)
+            sanitized.append({**m, "content": safe})
+        return sanitized
+
     async def analyze_progression(self, progression: str, summary: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         logger.info(f"[LM_STUDIO] analyze_progression START - progression='{progression}'")
         try:
@@ -47,13 +62,15 @@ class LMStudioClient:
 
         try:
             logger.info(f"[LM_STUDIO] Šaljem zahtev ka analyze_progression (model={model_name})")
+            messages = [
+                {"role": "system", "content": DJANGO_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ]
+            messages = self._sanitize_messages(messages)
             response = await client.chat.completions.create(
                 model=model_name,
                 temperature=0.3,
-                messages=[
-                    {"role": "system", "content": DJANGO_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
+                messages=messages,
             )
             received_response = True
             logger.info(f"[LM_STUDIO] Primljen odgovor - finish_reason={response.choices[0].finish_reason}")
@@ -168,6 +185,8 @@ class LMStudioClient:
                             },
                         ],
                     }
+                    # Ensure message contents are serialized to strings to avoid invalid JSON bodies
+                    request_kwargs["messages"] = self._sanitize_messages(request_kwargs["messages"])
                     if response_format is not None:
                         request_kwargs["response_format"] = response_format
                     
